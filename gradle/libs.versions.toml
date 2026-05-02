@@ -14,6 +14,7 @@ securityCrypto = "1.1.0"
 retrofit = "2.9.0"
 nav = "2.7.6"
 datastore = "1.0.0"
+runtime = "1.11.0"
 
 [libraries]
 androidx-compose-material3-window-size-class1 = { module = "androidx.compose.material3:material3-window-size-class" }
@@ -40,6 +41,7 @@ retrofit-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref 
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "nav" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
