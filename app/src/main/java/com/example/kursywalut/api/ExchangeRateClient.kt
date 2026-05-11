@@ -2,6 +2,7 @@ package com.example.kursywalut.api
 
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.time.Month
 
 class ExchangeRateClient {
     private val api: ExchangeRateApi
@@ -40,6 +41,25 @@ class ExchangeRateClient {
                 println("HTTP error: ${response.code()}")
                 null
             }
+        } catch (e: Exception) {
+            println("Network error: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun fetchHistoricalRates(
+        apiKey: String,
+        baseCurrency: String = "PLN",
+        year: Int,
+        month: Int,
+        day: Int
+    ): ExchangeRateResponse? {
+        return try {
+            val response = api.getHistoricalRates(apiKey, baseCurrency, year, month, day)
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body != null && body.result == "success") body else null
+            } else null
         } catch (e: Exception) {
             println("Network error: ${e.message}")
             null

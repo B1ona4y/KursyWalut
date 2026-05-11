@@ -1,5 +1,6 @@
 package com.example.kursywalut
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
@@ -57,13 +59,32 @@ fun KursyWalutApp() {
 
     val client = remember { ExchangeRateClient() }
     var rates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var growthRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val result = client.fetchRates(apiKey = BuildConfig.API_KEY, baseCurrency = "PLN")
-        if (result != null) rates = result.conversionRates
-        else error = "Failed to load rates"
+
+        val yesterday = java.time.LocalDate.now().minusDays(1)
+        val historical = client.fetchHistoricalRates(
+            apiKey = BuildConfig.API_KEY,
+            baseCurrency = "PLN",
+            year = yesterday.year,
+            month = yesterday.monthValue,
+            day = yesterday.dayOfMonth
+        )
+
+        if (result != null) {
+            rates = result.conversionRates
+
+            if (historical != null) {
+                growthRates = result.conversionRates.mapValues { (code, todayRate) ->
+                    val yesterdayRate = historical.conversionRates[code] ?: return@mapValues 0.0
+                    (todayRate - yesterdayRate) / yesterdayRate * 100
+                }
+            }
+        }
         isLoading = false
     }
 
@@ -90,6 +111,7 @@ fun KursyWalutApp() {
                 AppDestinations.HOME -> HomeScreen(
                     modifier = Modifier.padding(innerPadding),
                     rates = rates,
+                    growthRates = growthRates,
                     isLoading = isLoading,
                     error = error,
                     favorites = favorites,
@@ -119,34 +141,41 @@ enum class AppDestinations(
     PROFILE("Setting", R.drawable.ic_setting),
 }
 
+@SuppressLint("DefaultLocale")
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
     rates: Map<String, Double> = emptyMap(),
+    growthRates: Map<String, Double> = emptyMap(),
     isLoading: Boolean = false,
     error: String? = null,
     favorites: Set<String> = emptySet(),
     onToggleFavorite: (String) -> Unit = {}
 ) {
-    when {
-        isLoading -> {
-            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+    if (favorites.isEmpty()) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No favorites yet")
         }
-        error != null -> {
-            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Error: $error")
-            }
-        }
-        else -> {
-            LazyColumn(modifier = modifier) {
-                if (favorites.isNotEmpty()) {
-                    item {
+    } else {
+        LazyColumn(modifier = modifier) {
+            items(favorites.toList()) { code ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()   // растягиваем строку на всю ширину
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, // первый элемент влево, второй вправо
+                    verticalAlignment = Alignment.CenterVertically    // по вертикали по центру
+                ) {
+                    Text(code, fontWeight = FontWeight.Bold)
+                    Column(horizontalAlignment = Alignment.End) {
+                        // Текущая цена
+                        Text(String.format("%.4f", rates[code] ?: 0.0))
+
+                        // Процент роста — твоя переменная сюда
+                        val growth = growthRates[code] ?: 0.0
                         Text(
-                            "Favorites",
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(16.dp)
+                            text = String.format("%.2f%%", growth),
+                            color = if (growth >= 0) Color.Green else Color.Red // зелёный/красный
                         )
                     }
                 }

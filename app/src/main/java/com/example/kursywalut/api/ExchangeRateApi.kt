@@ -12,4 +12,13 @@ interface ExchangeRateApi {
         @Path("apiKey") apiKey: String,
         @Path("baseCurrency") baseCurrency: String
     ): Response<ExchangeRateResponse>
+
+    @GET("v6/{apiKey}/history/{baseCurrency}/{year}/{month}/{day}")
+    suspend fun getHistoricalRates(
+        @Path("apiKey") apiKey: String,
+        @Path("baseCurrency") baseCurrency: String,
+        @Path("year") year: Int,
+        @Path("month") month: Int,
+        @Path("day") day: Int,
+    ): Response<ExchangeRateResponse>
 }
