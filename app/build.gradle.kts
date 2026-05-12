@@ -76,4 +76,5 @@ dependencies {
     implementation(libs.navigation.compose)
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 }
