@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
@@ -27,21 +29,44 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import com.example.kursywalut.api.ExchangeRateClient
 import com.example.kursywalut.ui.theme.KursyWalutTheme
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.ExistingPeriodicWorkPolicy
+import com.example.kursywalut.api.RatesWorker
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        // Запускаем задачу раз в 24 часа
+        val request = PeriodicWorkRequestBuilder<RatesWorker>(
+            repeatInterval = 24L,
+            repeatIntervalTimeUnit = TimeUnit.HOURS
+        ).build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "save_daily_rates",
+            ExistingPeriodicWorkPolicy.KEEP,  // не перезапускать если уже есть
+            request
+        )
         enableEdgeToEdge()
         setContent {
             KursyWalutTheme {
@@ -62,30 +87,47 @@ fun KursyWalutApp() {
     var growthRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current;
+    var lastUpdate by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        val result = client.fetchRates(apiKey = BuildConfig.API_KEY, baseCurrency = "PLN")
+    val scope = rememberCoroutineScope()
 
-        val yesterday = java.time.LocalDate.now().minusDays(1)
-        val historical = client.fetchHistoricalRates(
-            apiKey = BuildConfig.API_KEY,
-            baseCurrency = "PLN",
-            year = yesterday.year,
-            month = yesterday.monthValue,
-            day = yesterday.dayOfMonth
-        )
+    suspend fun loadRates(){
+        isLoading = true
+        error = null
+        val result = client.fetchRates(BuildConfig.API_KEY, "PLN")
+
+        // Читаем вчерашние курсы из файла
+        val file = File(context.filesDir, "yesterday_rates.txt")
+        val yesterdayRates = if (file.exists()) {
+            file.readText()
+                .split(";")
+                .mapNotNull {
+                    val parts = it.split("=")
+                    if (parts.size == 2) parts[0] to parts[1].toDoubleOrNull()
+                    else null
+                }
+                .filter { it.second != null }
+                .associate { it.first to it.second!! }
+        } else {
+            emptyMap()
+        }
 
         if (result != null) {
             rates = result.conversionRates
-
-            if (historical != null) {
-                growthRates = result.conversionRates.mapValues { (code, todayRate) ->
-                    val yesterdayRate = historical.conversionRates[code] ?: return@mapValues 0.0
-                    (todayRate - yesterdayRate) / yesterdayRate * 100
-                }
+            lastUpdate = result.lastUpdate
+            growthRates = result.conversionRates.mapValues { (code, todayRate) ->
+                val yesterdayRate = yesterdayRates[code] ?: return@mapValues 0.0
+                (todayRate - yesterdayRate) / yesterdayRate * 100
             }
+        } else {
+            error = "Failed to load rates"
         }
         isLoading = false
+    }
+
+    LaunchedEffect(Unit) {
+        loadRates()
     }
 
     NavigationSuiteScaffold(
@@ -115,6 +157,8 @@ fun KursyWalutApp() {
                     isLoading = isLoading,
                     error = error,
                     favorites = favorites,
+                    lastUpdate = lastUpdate,
+                    onRefresh = { scope.launch { loadRates() } },
                     onToggleFavorite = { code ->
                         favorites = if (code in favorites) favorites - code else favorites + code
                     }
@@ -150,33 +194,58 @@ fun HomeScreen(
     isLoading: Boolean = false,
     error: String? = null,
     favorites: Set<String> = emptySet(),
-    onToggleFavorite: (String) -> Unit = {}
+    onToggleFavorite: (String) -> Unit = {},
+    lastUpdate: String,
+    onRefresh: () -> Unit
 ) {
-    if (favorites.isEmpty()) {
-        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No favorites yet")
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Last update:", fontWeight = FontWeight.Bold)
+                Text(
+                    text = lastUpdate.ifEmpty { "—" },
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            IconButton(onClick = onRefresh, enabled = !isLoading) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_refresh),
+                    contentDescription = "Refresh"
+                )
+            }
         }
-    } else {
-        LazyColumn(modifier = modifier) {
-            items(favorites.toList()) { code ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()   // растягиваем строку на всю ширину
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, // первый элемент влево, второй вправо
-                    verticalAlignment = Alignment.CenterVertically    // по вертикали по центру
-                ) {
-                    Text(code, fontWeight = FontWeight.Bold)
-                    Column(horizontalAlignment = Alignment.End) {
-                        // Текущая цена
-                        Text(String.format("%.4f", rates[code] ?: 0.0))
-
-                        // Процент роста — твоя переменная сюда
-                        val growth = growthRates[code] ?: 0.0
-                        Text(
-                            text = String.format("%.2f%%", growth),
-                            color = if (growth >= 0) Color.Green else Color.Red // зелёный/красный
-                        )
+        HorizontalDivider()
+        if (favorites.isEmpty()) {
+            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No favorites yet")
+            }
+        } else {
+            LazyColumn(modifier = modifier) {
+                items(favorites.toList()) { code ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()   // растягиваем строку на всю ширину
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween, // первый элемент влево, второй вправо
+                        verticalAlignment = Alignment.CenterVertically    // по вертикали по центру
+                    ) {
+                        Text(code, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.End) {
+                            // Текущая цена
+                            Text(String.format("%.4f", rates[code] ?: 0.0))
+                            // Процент роста
+                            val growth = growthRates[code] ?: 0.0
+                            Text(
+                                text = String.format("%.2f%%", growth),
+                                color = if (growth >= 0) Color.Green else Color.Red // зелёный/красный
+                            )
+                        }
                     }
                 }
             }
@@ -265,7 +334,22 @@ fun FavoritesScreen(
 
 @Composable
 fun ProfileScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Profile — coming soon")
+        Button(onClick = {
+            scope.launch {
+                val client = ExchangeRateClient()
+                val result = client.fetchRates(BuildConfig.API_KEY, "PLN")
+                if (result != null) {
+                    val data = result.conversionRates.entries
+                        .joinToString(";") { "${it.key}=${it.value}" }
+                    File(context.filesDir, "yesterday_rates.txt").writeText(data)
+                }
+            }
+        }) {
+            Text("Save rates as 'yesterday'")
+        }
     }
 }
