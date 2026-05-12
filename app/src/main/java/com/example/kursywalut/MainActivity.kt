@@ -21,6 +21,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
@@ -81,7 +82,7 @@ class MainActivity : ComponentActivity() {
 fun KursyWalutApp() {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
     var favorites by rememberSaveable { mutableStateOf(setOf<String>()) }
-
+    var baseCurrency by rememberSaveable { mutableStateOf("PLN") }
     val client = remember { ExchangeRateClient() }
     var rates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var growthRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
@@ -95,7 +96,7 @@ fun KursyWalutApp() {
     suspend fun loadRates(){
         isLoading = true
         error = null
-        val result = client.fetchRates(BuildConfig.API_KEY, "PLN")
+        val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
 
         // Читаем вчерашние курсы из файла
         val file = File(context.filesDir, "yesterday_rates.txt")
@@ -126,7 +127,7 @@ fun KursyWalutApp() {
         isLoading = false
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(baseCurrency) {
         loadRates()
     }
 
@@ -168,9 +169,15 @@ fun KursyWalutApp() {
                     favorites = favorites,
                     onToggleFavorite = { code ->
                         favorites = if (code in favorites) favorites - code else favorites + code
-                    }
+                    },
+                    baseCurrency = baseCurrency,
+                    onBaseCurrencyChange = { baseCurrency = it }
                 )
-                else -> ProfileScreen(Modifier.padding(innerPadding))
+                else -> ProfileScreen(
+                    modifier = Modifier.padding(innerPadding),
+                    baseCurrency = baseCurrency,
+                    onBaseCurrencyChange = { baseCurrency = it }   // ← добавь это
+                )
             }
         }
     }
@@ -253,11 +260,14 @@ fun HomeScreen(
     }
 }
 
+@SuppressLint("DefaultLocale")
 @Composable
 fun FavoritesScreen(
     modifier: Modifier = Modifier,
     favorites: Set<String> = emptySet(),
     onToggleFavorite: (String) -> Unit = {},
+    baseCurrency: String,
+    onBaseCurrencyChange: (String) -> Unit = {}
 ) {
     val client = remember { ExchangeRateClient() }
     var rates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
@@ -271,7 +281,7 @@ fun FavoritesScreen(
     LaunchedEffect(Unit) {
         val result = client.fetchRates(
             apiKey = BuildConfig.API_KEY,
-            baseCurrency = "PLN"
+            baseCurrency = baseCurrency
         )
         if (result != null) {
             rates = result.conversionRates
@@ -333,15 +343,38 @@ fun FavoritesScreen(
 }
 
 @Composable
-fun ProfileScreen(modifier: Modifier = Modifier) {
+fun ProfileScreen(
+    modifier: Modifier = Modifier,
+    baseCurrency: String,
+    onBaseCurrencyChange: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val currencies = listOf("PLN", "USD", "EUR")
+    Column(modifier = modifier.fillMaxSize()) {
+        Text("Base currency:", fontWeight = FontWeight.Bold)
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        currencies.forEach { currency ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = currency == baseCurrency,
+                    onClick = { onBaseCurrencyChange(currency) }
+                )
+                Text(currency, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
         Button(onClick = {
             scope.launch {
                 val client = ExchangeRateClient()
-                val result = client.fetchRates(BuildConfig.API_KEY, "PLN")
+                val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
                 if (result != null) {
                     val data = result.conversionRates.entries
                         .joinToString(";") { "${it.key}=${it.value}" }
@@ -351,5 +384,6 @@ fun ProfileScreen(modifier: Modifier = Modifier) {
         }) {
             Text("Save rates as 'yesterday'")
         }
+
     }
 }
