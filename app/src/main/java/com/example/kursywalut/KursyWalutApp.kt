@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import androidx.core.content.edit
+import kotlin.apply
+import kotlin.text.contains
 
 @PreviewScreenSizes
 @Composable
@@ -42,7 +44,7 @@ fun KursyWalutApp() {
 
     // ── UI state ──
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-    var favorites          by rememberSaveable { mutableStateOf(setOf<String>()) }
+
     var baseCurrency       by rememberSaveable { mutableStateOf("PLN") }
     var selectedCurrency   by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -53,6 +55,12 @@ fun KursyWalutApp() {
     var isLoading   by remember { mutableStateOf(true) }
     var error       by remember { mutableStateOf<String?>(null) }
     var lastUpdate  by remember { mutableStateOf("") }
+
+    var favorites by remember {
+        mutableStateOf(
+            prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()
+        )
+    }
 
     // ── connectivity ──
     val isOnline by remember {
@@ -165,9 +173,9 @@ fun KursyWalutApp() {
                 AppDestinations.FAVORITES -> FavoritesScreen(
                     modifier             = Modifier.padding(innerPadding),
                     favorites            = favorites,
-                    onToggleFavorite     = { code ->
-                        favorites = if (code in favorites) favorites - code else favorites + code
-                    },
+                    onToggleFavorite = {
+                        code -> favorites = if (code in favorites) favorites - code else favorites + code
+                        prefs.edit().putStringSet("favorites", favorites).apply() },
                     baseCurrency         = baseCurrency,
                     onBaseCurrencyChange = { baseCurrency = it }
                 )
@@ -185,3 +193,4 @@ fun KursyWalutApp() {
         }
     }
 }
+
