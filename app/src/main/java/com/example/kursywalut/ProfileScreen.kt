@@ -1,10 +1,13 @@
 package com.example.kursywalut
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.RadioButton
@@ -24,20 +27,27 @@ import java.io.File
 fun ProfileScreen(
     modifier: Modifier = Modifier,
     baseCurrency: String,
-    onBaseCurrencyChange: (String) -> Unit = {}
+    onBaseCurrencyChange: (String) -> Unit = {},
+    refreshInterval: RefreshInterval = RefreshInterval.NEVER,        // ← новое
+    onRefreshIntervalChange: (RefreshInterval) -> Unit = {}          // ← новое
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val currencies = listOf("PLN", "USD", "EUR")
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Text("Base currency:", fontWeight = FontWeight.Bold)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())   // на случай маленького экрана
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
 
+        // --- Базовая валюта (без изменений) ---
+        Text("Base currency:", fontWeight = FontWeight.Bold)
         currencies.forEach { currency ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
@@ -48,8 +58,32 @@ fun ProfileScreen(
             }
         }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+        // --- Авто-обновление ---
+        Text("Auto-refresh:", fontWeight = FontWeight.Bold)
+
+        RefreshInterval.entries.forEach { interval ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = interval == refreshInterval,
+                    onClick = { onRefreshIntervalChange(interval) }
+                )
+                Text(
+                    text = interval.label,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        // --- Сохранить вчерашние курсы (без изменений) ---
         Button(onClick = {
             scope.launch {
                 val client = ExchangeRateClient()

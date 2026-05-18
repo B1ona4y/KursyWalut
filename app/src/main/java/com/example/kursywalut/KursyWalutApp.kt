@@ -1,5 +1,6 @@
 package com.example.kursywalut
 
+import android.content.Context
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,33 +23,53 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import com.example.kursywalut.api.ExchangeRateClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.core.content.edit
 
 @PreviewScreenSizes
 @Composable
 fun KursyWalutApp() {
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-    var favorites by rememberSaveable { mutableStateOf(setOf<String>()) }
-    var baseCurrency by rememberSaveable { mutableStateOf("PLN") }
-    val client = remember { ExchangeRateClient() }
-    var rates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var growthRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var lastUpdate by remember { mutableStateOf("") }
-    var selectedCurrency by rememberSaveable { mutableStateOf<String?>(null) }
-
+    // ── context must come first — everything else depends on it ──
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // ── preferences (after context) ──
+    val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+
+    // ── UI state ──
+    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
+    var favorites          by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var baseCurrency       by rememberSaveable { mutableStateOf("PLN") }
+    var selectedCurrency   by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // ── data state ──
+    val client = remember { ExchangeRateClient() }
+    var rates       by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var growthRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var isLoading   by remember { mutableStateOf(true) }
+    var error       by remember { mutableStateOf<String?>(null) }
+    var lastUpdate  by remember { mutableStateOf("") }
+
+    // ── connectivity ──
     val isOnline by remember {
         observeConnectivity(context)
             .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
     }.collectAsState()
 
+    // ── auto-refresh interval (restored from prefs on first composition) ──
+    var refreshInterval by remember {
+        mutableStateOf(
+            RefreshInterval.entries.find {
+                it.name == prefs.getString("refresh_interval", RefreshInterval.NEVER.name)
+            } ?: RefreshInterval.NEVER
+        )
+    }
+
+    // ── load rates ──
     suspend fun loadRates() {
         isLoading = true
         error = null
@@ -82,18 +103,29 @@ fun KursyWalutApp() {
         isLoading = false
     }
 
+    // ── initial load when base currency changes ──
     LaunchedEffect(baseCurrency) {
         loadRates()
     }
 
+    // ── auto-refresh loop — restarts whenever interval changes ──
+    LaunchedEffect(refreshInterval) {
+        if (refreshInterval == RefreshInterval.NEVER) return@LaunchedEffect
+        while (true) {
+            delay(refreshInterval.millis)
+            loadRates()
+        }
+    }
+
+    // ── detail screen takes over the whole UI ──
     if (selectedCurrency != null) {
         CurrencyDetailScreen(
             currencyCode = selectedCurrency!!,
-            currentRate = rates[selectedCurrency] ?: 0.0,
-            growthRate = growthRates[selectedCurrency] ?: 0.0,
-            lastUpdate = lastUpdate,
+            currentRate  = rates[selectedCurrency] ?: 0.0,
+            growthRate   = growthRates[selectedCurrency] ?: 0.0,
+            lastUpdate   = lastUpdate,
             baseCurrency = baseCurrency,
-            onBack = { selectedCurrency = null }
+            onBack       = { selectedCurrency = null }
         )
         return
     }
@@ -109,9 +141,9 @@ fun KursyWalutApp() {
                             modifier = Modifier.size(24.dp)
                         )
                     },
-                    label = { Text(it.label) },
+                    label    = { Text(it.label) },
                     selected = it == currentDestination,
-                    onClick = { currentDestination = it }
+                    onClick  = { currentDestination = it }
                 )
             }
         }
@@ -119,30 +151,35 @@ fun KursyWalutApp() {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             when (currentDestination) {
                 AppDestinations.HOME -> HomeScreen(
-                    modifier = Modifier.padding(innerPadding),
-                    rates = rates,
-                    growthRates = growthRates,
-                    isLoading = isLoading,
-                    error = error,
-                    favorites = favorites,
-                    lastUpdate = lastUpdate,
-                    onRefresh = { scope.launch { loadRates() } },
-                    onCurrencyClick = { selectedCurrency = it },
-                    isOnline = isOnline,
+                    modifier        = Modifier.padding(innerPadding),
+                    rates           = rates,
+                    growthRates     = growthRates,
+                    isLoading       = isLoading,
+                    error           = error,
+                    favorites       = favorites,
+                    lastUpdate      = lastUpdate,
+                    isOnline        = isOnline,
+                    onRefresh       = { scope.launch { loadRates() } },
+                    onCurrencyClick = { selectedCurrency = it }
                 )
                 AppDestinations.FAVORITES -> FavoritesScreen(
-                    modifier = Modifier.padding(innerPadding),
-                    favorites = favorites,
-                    onToggleFavorite = { code ->
+                    modifier             = Modifier.padding(innerPadding),
+                    favorites            = favorites,
+                    onToggleFavorite     = { code ->
                         favorites = if (code in favorites) favorites - code else favorites + code
                     },
-                    baseCurrency = baseCurrency,
+                    baseCurrency         = baseCurrency,
                     onBaseCurrencyChange = { baseCurrency = it }
                 )
                 AppDestinations.PROFILE -> ProfileScreen(
-                    modifier = Modifier.padding(innerPadding),
-                    baseCurrency = baseCurrency,
-                    onBaseCurrencyChange = { baseCurrency = it }
+                    modifier                = Modifier.padding(innerPadding),
+                    baseCurrency            = baseCurrency,
+                    onBaseCurrencyChange    = { baseCurrency = it },
+                    refreshInterval         = refreshInterval,
+                    onRefreshIntervalChange = { interval: RefreshInterval ->
+                        refreshInterval = interval
+                        prefs.edit { putString("refresh_interval", interval.name) }
+                    }
                 )
             }
         }
