@@ -13,12 +13,10 @@ class RatesWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            // 1. Запрашиваем курсы с API
             val client = ExchangeRateClient()
             val result = client.fetchRates(BuildConfig.API_KEY, "PLN")
-                ?: return Result.retry()  // нет интернета — попробуй позже
+                ?: return Result.retry()
 
-            // 2. Сохраняем в файл (формат: "USD=4.05;EUR=4.32;...")
             val data = result.conversionRates.entries
                 .joinToString(";") { "${it.key}=${it.value}" }
 

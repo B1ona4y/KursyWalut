@@ -5,20 +5,10 @@ import retrofit2.http.GET
 import retrofit2.http.Path
 
 interface ExchangeRateApi {
-
     // GET https://v6.exchangerate-api.com/v6/YOUR-API-KEY/latest/USD
     @GET("v6/{apiKey}/latest/{baseCurrency}")
     suspend fun getLatestRates(
         @Path("apiKey") apiKey: String,
         @Path("baseCurrency") baseCurrency: String
-    ): Response<ExchangeRateResponse>
-
-    @GET("v6/{apiKey}/history/{baseCurrency}/{year}/{month}/{day}")
-    suspend fun getHistoricalRates(
-        @Path("apiKey") apiKey: String,
-        @Path("baseCurrency") baseCurrency: String,
-        @Path("year") year: Int,
-        @Path("month") month: Int,
-        @Path("day") day: Int,
     ): Response<ExchangeRateResponse>
 }
