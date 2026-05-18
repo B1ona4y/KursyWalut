@@ -1,6 +1,8 @@
 package com.example.kursywalut
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
@@ -35,8 +38,29 @@ fun HomeScreen(
     favorites: Set<String> = emptySet(),
     lastUpdate: String,
     onRefresh: () -> Unit,
-    onCurrencyClick: (String) -> Unit = {}
+    onCurrencyClick: (String) -> Unit = {},
+    isOnline: Boolean
 ) {
+    AnimatedVisibility(visible = !isOnline) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF44336))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_wifi_off), // any "no wifi" icon
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(16.dp)
+        )
+        Text("Brak połączenia — dane mogą być nieaktualne",
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall)
+    }
+}
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier

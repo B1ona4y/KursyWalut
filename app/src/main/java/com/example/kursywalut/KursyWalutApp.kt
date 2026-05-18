@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import com.example.kursywalut.api.ExchangeRateClient
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -40,6 +43,11 @@ fun KursyWalutApp() {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val isOnline by remember {
+        observeConnectivity(context)
+            .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
+    }.collectAsState()
 
     suspend fun loadRates() {
         isLoading = true
@@ -119,7 +127,8 @@ fun KursyWalutApp() {
                     favorites = favorites,
                     lastUpdate = lastUpdate,
                     onRefresh = { scope.launch { loadRates() } },
-                    onCurrencyClick = { selectedCurrency = it }
+                    onCurrencyClick = { selectedCurrency = it },
+                    isOnline = isOnline,
                 )
                 AppDestinations.FAVORITES -> FavoritesScreen(
                     modifier = Modifier.padding(innerPadding),
