@@ -27,48 +27,39 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
-import androidx.core.content.edit
-import kotlin.apply
-import kotlin.text.contains
 
 @PreviewScreenSizes
 @Composable
 fun KursyWalutApp() {
-    // ── context must come first — everything else depends on it ──
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    // ── preferences (after context) ──
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
 
-    // ── UI state ──
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-
     var baseCurrency       by rememberSaveable { mutableStateOf("PLN") }
     var selectedCurrency   by rememberSaveable { mutableStateOf<String?>(null) }
-
-    // ── data state ──
-    val client = remember { ExchangeRateClient() }
-    var rates       by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var growthRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var isLoading   by remember { mutableStateOf(true) }
-    var error       by remember { mutableStateOf<String?>(null) }
-    var lastUpdate  by remember { mutableStateOf("") }
+    var selectedRange      by rememberSaveable { mutableStateOf(RangeOption.DAY_1) }
 
     var favorites by remember {
-        mutableStateOf(
-            prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()
-        )
+        mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
+    }
+    fun toggleFavorite(code: String) {
+        favorites = if (code in favorites) favorites - code else favorites + code
+        prefs.edit().putStringSet("favorites", favorites).apply()
     }
 
-    // ── connectivity ──
+    val client = remember { ExchangeRateClient() }
+    var rates         by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var ratesHistory  by remember { mutableStateOf<Map<String, Map<String, Double>>>(emptyMap()) }
+    var isLoading     by remember { mutableStateOf(true) }
+    var error         by remember { mutableStateOf<String?>(null) }
+    var lastUpdate    by remember { mutableStateOf("") }
+
     val isOnline by remember {
         observeConnectivity(context)
             .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
     }.collectAsState()
 
-    // ── auto-refresh interval (restored from prefs on first composition) ──
     var refreshInterval by remember {
         mutableStateOf(
             RefreshInterval.entries.find {
@@ -77,46 +68,35 @@ fun KursyWalutApp() {
         )
     }
 
-    // ── load rates ──
+    // ── derived: growth depends on rates, history and selectedRange ──────────
+    val growthRates = remember(rates, ratesHistory, selectedRange) {
+        rates.mapNotNull { (code, todayRate) ->
+            val oldRate = getRateNDaysAgo(ratesHistory, code, selectedRange.days)
+            if (oldRate != null && oldRate != 0.0) {
+                code to (todayRate - oldRate) / oldRate * 100
+            } else null
+        }.toMap()
+    }
+
     suspend fun loadRates() {
         isLoading = true
         error = null
+
+        // Always refresh history from disk (file may have been appended to)
+        ratesHistory = readRatesHistory(context.filesDir)
+
         val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
-
-        val file = File(context.filesDir, "yesterday_rates.txt")
-        val yesterdayRates = if (file.exists()) {
-            file.readText()
-                .split(";")
-                .mapNotNull {
-                    val parts = it.split("=")
-                    if (parts.size == 2) parts[0] to parts[1].toDoubleOrNull()
-                    else null
-                }
-                .filter { it.second != null }
-                .associate { it.first to it.second!! }
-        } else {
-            emptyMap()
-        }
-
         if (result != null) {
             rates = result.conversionRates
             lastUpdate = result.lastUpdate
-            growthRates = result.conversionRates.mapValues { (code, todayRate) ->
-                val yesterdayRate = yesterdayRates[code] ?: return@mapValues 0.0
-                (todayRate - yesterdayRate) / yesterdayRate * 100
-            }
         } else {
             error = "Failed to load rates"
         }
         isLoading = false
     }
 
-    // ── initial load when base currency changes ──
-    LaunchedEffect(baseCurrency) {
-        loadRates()
-    }
+    LaunchedEffect(baseCurrency) { loadRates() }
 
-    // ── auto-refresh loop — restarts whenever interval changes ──
     LaunchedEffect(refreshInterval) {
         if (refreshInterval == RefreshInterval.NEVER) return@LaunchedEffect
         while (true) {
@@ -125,15 +105,17 @@ fun KursyWalutApp() {
         }
     }
 
-    // ── detail screen takes over the whole UI ──
     if (selectedCurrency != null) {
         CurrencyDetailScreen(
-            currencyCode = selectedCurrency!!,
-            currentRate  = rates[selectedCurrency] ?: 0.0,
-            growthRate   = growthRates[selectedCurrency] ?: 0.0,
-            lastUpdate   = lastUpdate,
-            baseCurrency = baseCurrency,
-            onBack       = { selectedCurrency = null }
+            currencyCode    = selectedCurrency!!,
+            currentRate     = rates[selectedCurrency] ?: 0.0,
+            growthRate      = growthRates[selectedCurrency] ?: 0.0,
+            lastUpdate      = lastUpdate,
+            baseCurrency    = baseCurrency,
+            ratesHistory    = ratesHistory,
+            selectedRange   = selectedRange,
+            onRangeChange   = { selectedRange = it },
+            onBack          = { selectedCurrency = null }
         )
         return
     }
@@ -143,11 +125,7 @@ fun KursyWalutApp() {
             AppDestinations.entries.forEach {
                 item(
                     icon = {
-                        Icon(
-                            painterResource(it.icon),
-                            contentDescription = it.label,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Icon(painterResource(it.icon), it.label, modifier = Modifier.size(24.dp))
                     },
                     label    = { Text(it.label) },
                     selected = it == currentDestination,
@@ -167,15 +145,15 @@ fun KursyWalutApp() {
                     favorites       = favorites,
                     lastUpdate      = lastUpdate,
                     isOnline        = isOnline,
+                    selectedRange   = selectedRange,
+                    onRangeChange   = { selectedRange = it },
                     onRefresh       = { scope.launch { loadRates() } },
                     onCurrencyClick = { selectedCurrency = it }
                 )
                 AppDestinations.FAVORITES -> FavoritesScreen(
                     modifier             = Modifier.padding(innerPadding),
                     favorites            = favorites,
-                    onToggleFavorite = {
-                        code -> favorites = if (code in favorites) favorites - code else favorites + code
-                        prefs.edit().putStringSet("favorites", favorites).apply() },
+                    onToggleFavorite     = { toggleFavorite(it) },
                     baseCurrency         = baseCurrency,
                     onBaseCurrencyChange = { baseCurrency = it }
                 )
@@ -186,11 +164,10 @@ fun KursyWalutApp() {
                     refreshInterval         = refreshInterval,
                     onRefreshIntervalChange = { interval: RefreshInterval ->
                         refreshInterval = interval
-                        prefs.edit { putString("refresh_interval", interval.name) }
+                        prefs.edit().putString("refresh_interval", interval.name).apply()
                     }
                 )
             }
         }
     }
 }
-

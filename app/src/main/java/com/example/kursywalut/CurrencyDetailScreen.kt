@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -22,11 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -34,20 +32,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import java.io.File
+import java.time.LocalDate
 
 val currencyNames = mapOf(
-    "USD" to "US Dollar", "EUR" to "Euro", "GBP" to "British Pound",
-    "JPY" to "Japanese Yen", "CHF" to "Swiss Franc", "CAD" to "Canadian Dollar",
-    "AUD" to "Australian Dollar", "CNY" to "Chinese Yuan", "NOK" to "Norwegian Krone",
-    "SEK" to "Swedish Krona", "DKK" to "Danish Krone", "CZK" to "Czech Koruna",
-    "HUF" to "Hungarian Forint", "PLN" to "Polish Zloty", "UAH" to "Ukrainian Hryvnia",
-    "RUB" to "Russian Ruble", "TRY" to "Turkish Lira", "MXN" to "Mexican Peso",
-    "BRL" to "Brazilian Real", "INR" to "Indian Rupee"
+    "USD" to "US Dollar",         "EUR" to "Euro",
+    "GBP" to "British Pound",     "JPY" to "Japanese Yen",
+    "CHF" to "Swiss Franc",       "CAD" to "Canadian Dollar",
+    "AUD" to "Australian Dollar", "CNY" to "Chinese Yuan",
+    "NOK" to "Norwegian Krone",   "SEK" to "Swedish Krona",
+    "DKK" to "Danish Krone",      "CZK" to "Czech Koruna",
+    "HUF" to "Hungarian Forint",  "PLN" to "Polish Zloty",
+    "UAH" to "Ukrainian Hryvnia", "RUB" to "Russian Ruble",
+    "TRY" to "Turkish Lira",      "MXN" to "Mexican Peso",
+    "BRL" to "Brazilian Real",    "INR" to "Indian Rupee"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,39 +59,19 @@ fun CurrencyDetailScreen(
     growthRate: Double,
     lastUpdate: String,
     baseCurrency: String,
+    ratesHistory: Map<String, Map<String, Double>>,
+    selectedRange: RangeOption,
+    onRangeChange: (RangeOption) -> Unit,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
-    var historicalRates by remember { mutableStateOf<List<Pair<String, Double>>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(currencyCode, baseCurrency) {
-        isLoading = true
-        error = null
-
-        // Read yesterday's rate for this currency from local file
-        val file = File(context.filesDir, "yesterday_rates.txt")
-        val yesterdayRate: Double? = if (file.exists()) {
-            file.readText()
-                .split(";")
-                .mapNotNull { entry ->
-                    val parts = entry.split("=")
-                    if (parts.size == 2 && parts[0] == currencyCode) parts[1].toDoubleOrNull()
-                    else null
-                }
-                .firstOrNull()
-        } else null
-
-        historicalRates = if (yesterdayRate != null) {
-            listOf("Yesterday" to yesterdayRate, "Today" to currentRate)
-        } else {
-            // No file yet — show only today's rate, chart will be empty
-            error = "No historical data yet.\nUse 'Save rates as yesterday' in Settings."
-            listOf("Today" to currentRate)
+    // Build chart series: historical points from file + today's current rate
+    val chartData = remember(ratesHistory, currencyCode, selectedRange, currentRate) {
+        val series = getRateSeries(ratesHistory, currencyCode, selectedRange.days).toMutableList()
+        val today  = LocalDate.now().toString()
+        if (series.none { it.first == today }) {
+            series.add(today to currentRate)
         }
-
-        isLoading = false
+        series
     }
 
     Scaffold(
@@ -113,13 +93,20 @@ fun CurrencyDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // --- Current rate card ---
+            // --- Info card ---
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "${currencyNames[currencyCode] ?: currencyCode} ($currencyCode)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.size(4.dp))
                     Text(
                         text = String.format("%.4f %s", currentRate, baseCurrency),
                         style = MaterialTheme.typography.headlineMedium,
@@ -135,7 +122,7 @@ fun CurrencyDetailScreen(
                             style = MaterialTheme.typography.bodyLarge
                         )
                         Text(
-                            text = "vs poprzedni dzień",
+                            text = "vs ${selectedRange.label}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -149,36 +136,37 @@ fun CurrencyDetailScreen(
                 }
             }
 
+            // --- Range selector (synced with HomeScreen) ---
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RangeOption.entries.forEach { range ->
+                    FilterChip(
+                        selected = range == selectedRange,
+                        onClick  = { onRangeChange(range) },
+                        label    = { Text(range.label) }
+                    )
+                }
+            }
+
             // --- Chart ---
-            Text("Zmiana kursu", fontWeight = FontWeight.Bold)
+            Text("Zmiana kursu (${selectedRange.label})", fontWeight = FontWeight.Bold)
 
-            when {
-                isLoading -> Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator() }
-
-                error != null -> Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
+            if (chartData.size >= 2) {
+                RateLineChart(
+                    data = chartData,
+                    modifier = Modifier.fillMaxWidth().height(200.dp)
+                )
+            } else {
+                Box(
+                    Modifier.fillMaxWidth().height(200.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall
+                        text = "Brak wystarczających danych historycznych.\n" +
+                                "Zapisz dzisiejsze kursy w ustawieniach, aby budować historię.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-
-                historicalRates.size >= 2 -> RateLineChart(
-                    data = historicalRates,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                )
             }
 
             // --- Data source ---
@@ -193,12 +181,11 @@ fun CurrencyDetailScreen(
 
 @Composable
 fun RateLineChart(
-    data: List<Pair<String, Double>>,   // ("Yesterday"/"Today", rate)
+    data: List<Pair<String, Double>>,
     modifier: Modifier = Modifier
 ) {
     val lineColor = MaterialTheme.colorScheme.primary
     val fillColor = lineColor.copy(alpha = 0.15f)
-    val labelColor = MaterialTheme.colorScheme.onSurface
 
     Canvas(modifier = modifier.padding(bottom = 24.dp, top = 8.dp)) {
         if (data.size < 2) return@Canvas
@@ -206,34 +193,40 @@ fun RateLineChart(
         val values = data.map { it.second }
         val minVal = values.min()
         val maxVal = values.max()
-        val range = if (maxVal - minVal == 0.0) 1.0 else maxVal - minVal
+        val range  = if (maxVal - minVal == 0.0) 1.0 else maxVal - minVal
+        val stepX  = size.width / (data.size - 1)
 
-        val stepX = size.width / (data.size - 1)
-
-        fun xOf(i: Int) = i * stepX
-        fun yOf(v: Double) = size.height * (1 - (v - minVal) / range).toFloat()
+        fun xOf(i: Int)    = i * stepX
+        fun yOf(v: Double) = size.height * (1f - ((v - minVal) / range).toFloat())
 
         // Fill under line
-        val fillPath = Path().apply {
-            moveTo(xOf(0), yOf(values[0]))
-            data.forEachIndexed { i, (_, v) -> lineTo(xOf(i), yOf(v)) }
-            lineTo(xOf(data.size - 1), size.height)
-            lineTo(0f, size.height)
-            close()
-        }
-        drawPath(fillPath, color = fillColor)
+        drawPath(
+            Path().apply {
+                moveTo(xOf(0), yOf(values[0]))
+                data.forEachIndexed { i, (_, v) -> lineTo(xOf(i), yOf(v)) }
+                lineTo(xOf(data.size - 1), size.height)
+                lineTo(0f, size.height)
+                close()
+            },
+            color = fillColor
+        )
 
         // Line
-        val linePath = Path().apply {
-            moveTo(xOf(0), yOf(values[0]))
-            data.forEachIndexed { i, (_, v) -> lineTo(xOf(i), yOf(v)) }
-        }
-        drawPath(linePath, color = lineColor, style = Stroke(width = 3f, cap = StrokeCap.Round))
+        drawPath(
+            Path().apply {
+                moveTo(xOf(0), yOf(values[0]))
+                data.forEachIndexed { i, (_, v) -> lineTo(xOf(i), yOf(v)) }
+            },
+            color = lineColor,
+            style = Stroke(width = 3f, cap = StrokeCap.Round)
+        )
 
-        // Dots at each point
+        // Dots — first, last, every 5th (keeps 30-day chart readable)
         data.forEachIndexed { i, (_, v) ->
-            drawCircle(lineColor, 6f, Offset(xOf(i), yOf(v)))
-            drawCircle(Color.White, 3f, Offset(xOf(i), yOf(v)))
+            if (i == 0 || i == data.size - 1 || i % 5 == 0) {
+                drawCircle(lineColor, 6f, Offset(xOf(i), yOf(v)))
+                drawCircle(Color.White, 3f, Offset(xOf(i), yOf(v)))
+            }
         }
     }
 }

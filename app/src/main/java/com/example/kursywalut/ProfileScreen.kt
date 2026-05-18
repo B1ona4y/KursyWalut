@@ -22,14 +22,15 @@ import androidx.compose.ui.unit.dp
 import com.example.kursywalut.api.ExchangeRateClient
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.LocalDate
 
 @Composable
 fun ProfileScreen(
     modifier: Modifier = Modifier,
     baseCurrency: String,
     onBaseCurrencyChange: (String) -> Unit = {},
-    refreshInterval: RefreshInterval = RefreshInterval.NEVER,        // ← новое
-    onRefreshIntervalChange: (RefreshInterval) -> Unit = {}          // ← новое
+    refreshInterval: RefreshInterval = RefreshInterval.NEVER,
+    onRefreshIntervalChange: (RefreshInterval) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -38,12 +39,12 @@ fun ProfileScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())   // на случай маленького экрана
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
 
-        // --- Базовая валюта (без изменений) ---
+        // --- Base currency ---
         Text("Base currency:", fontWeight = FontWeight.Bold)
         currencies.forEach { currency ->
             Row(
@@ -60,42 +61,57 @@ fun ProfileScreen(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        // --- Авто-обновление ---
+        // --- Auto-refresh ---
         Text("Auto-refresh:", fontWeight = FontWeight.Bold)
-
         RefreshInterval.entries.forEach { interval ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
                     selected = interval == refreshInterval,
                     onClick = { onRefreshIntervalChange(interval) }
                 )
-                Text(
-                    text = interval.label,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
+                Text(interval.label, modifier = Modifier.padding(start = 8.dp))
             }
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        // --- Сохранить вчерашние курсы (без изменений) ---
+        // --- Save today's rates (appends, does not overwrite) ---
         Button(onClick = {
             scope.launch {
                 val client = ExchangeRateClient()
                 val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
                 if (result != null) {
-                    val data = result.conversionRates.entries
-                        .joinToString(";") { "${it.key}=${it.value}" }
-                    File(context.filesDir, "yesterday_rates.txt").writeText(data)
+                    appendRatesToHistory(
+                        filesDir = context.filesDir,
+                        rates    = result.conversionRates
+                    )
                 }
             }
         }) {
-            Text("Save rates as 'yesterday'")
+            Text("Save today's rates to history")
         }
     }
+}
+
+/**
+ * Appends today's rates as a new line in rates_history.txt.
+ * Format per line: "YYYY-MM-DD|CODE1=VAL1;CODE2=VAL2;..."
+ * If a line for today already exists it is replaced, not duplicated.
+ */
+fun appendRatesToHistory(filesDir: File, rates: Map<String, Double>) {
+    val today   = LocalDate.now().toString()   // e.g. "2025-05-18"
+    val newLine = "$today|" + rates.entries.joinToString(";") { "${it.key}=${it.value}" }
+
+    val file = File(filesDir, "rates_history.txt")
+
+    val existingLines = if (file.exists()) {
+        file.readLines().filter { !it.startsWith("$today|") }  // drop today's old entry if any
+    } else {
+        emptyList()
+    }
+
+    file.writeText((existingLines + newLine).joinToString("\n"))
 }
