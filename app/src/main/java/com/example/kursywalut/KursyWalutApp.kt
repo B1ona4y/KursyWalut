@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.core.content.edit
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @PreviewScreenSizes
 @Composable
@@ -103,7 +105,8 @@ fun KursyWalutApp() {
         val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
         if (result != null) {
             rates = result.conversionRates
-            lastUpdate = result.lastUpdate
+            lastUpdate = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))   // ← вместо result.lastUpdate
         } else {
             error = "Failed to load rates"
         }
