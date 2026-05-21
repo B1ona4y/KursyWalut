@@ -28,6 +28,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+
+private val TrendUp   = Color(0xFF4CAF50)
+private val TrendDown = Color(0xFFF44336)
+
 @SuppressLint("DefaultLocale")
 @Composable
 fun HomeScreen(
@@ -135,18 +139,18 @@ fun HomeScreen(
                             Text(formatRate(rates[code] ?: 0.0, decimalPlaces))
 
                             val growth = growthRates[code]
-                            if (growth != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                TrendIcon(growth)
                                 Text(
-                                    text  = String.format("%+.2f%%", growth),
-                                    color = if (growth >= 0) Color(0xFF4CAF50) else Color(0xFFF44336),
+                                    text = if (growth != null)
+                                        String.format("%+.2f%%", growth) else "—",
+                                    color = trendColor(growth),
                                     style = MaterialTheme.typography.bodySmall
                                 )
-                            } else {
-                                Text(
-                                    text  = "—",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+
                             }
                         }
                     }
@@ -154,5 +158,29 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+@Composable
+private fun trendColor(growth: Double?): Color = when {
+    growth == null -> MaterialTheme.colorScheme.onSurfaceVariant
+    growth > 0     -> TrendUp
+    growth < 0     -> TrendDown
+    else           -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun TrendIcon(growth: Double?, modifier: Modifier = Modifier) {
+    val iconRes: Int? = when {
+        growth == null -> null
+        growth > 0     -> R.drawable.increase
+        growth < 0     -> R.drawable.decrease
+        else           -> null   // ровно 0 = bez zmian, иконку не рисуем
+    }
+    if (iconRes != null) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = modifier.size(16.dp)
+        )
     }
 }
