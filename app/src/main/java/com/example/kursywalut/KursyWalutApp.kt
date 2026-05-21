@@ -123,21 +123,7 @@ fun KursyWalutApp() {
         }
     }
 
-    if (selectedCurrency != null) {
-        CurrencyDetailScreen(
-            currencyCode    = selectedCurrency!!,
-            currentRate     = rates[selectedCurrency] ?: 0.0,
-            growthRate      = growthRates[selectedCurrency] ?: 0.0,
-            lastUpdate      = lastUpdate,
-            baseCurrency    = baseCurrency,
-            ratesHistory    = ratesHistory,
-            selectedRange   = selectedRange,
-            onRangeChange   = { selectedRange = it },
-            onBack          = { selectedCurrency = null },
-            decimalPlaces   = decimalPlaces
-        )
-        return
-    }
+
 
     NavigationSuiteScaffold(
         navigationSuiteItems = {
@@ -155,21 +141,21 @@ fun KursyWalutApp() {
     ) {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             when (currentDestination) {
-                AppDestinations.HOME -> HomeScreen(
-                    modifier        = Modifier.padding(innerPadding),
-                    rates           = rates,
-                    growthRates     = growthRates,
-                    isLoading       = isLoading,
-                    error           = error,
-                    favorites       = favorites,
-                    lastUpdate      = lastUpdate,
-                    isOnline        = isOnline,
-                    selectedRange   = selectedRange,
-                    onRangeChange   = { selectedRange = it },
-                    onRefresh       = { scope.launch { loadRates() } },
-                    onCurrencyClick = { selectedCurrency = it },
-                    decimalPlaces = decimalPlaces
-                )
+                AppDestinations.HOME -> {
+                    //  Use MainAppContent here to manage the adaptive split-screen layout
+                    MainAppContent(
+                        rates = rates,
+                        growthRates = growthRates,
+                        favorites = favorites,
+                        lastUpdate = lastUpdate,
+                        isOnline = isOnline,
+                        selectedRange = selectedRange,
+                        ratesHistory = ratesHistory,
+                        baseCurrency = baseCurrency,
+                        onRangeChange = { selectedRange = it },
+                        onRefresh = { scope.launch { loadRates() } }
+                    )
+                }
                 AppDestinations.FAVORITES -> FavoritesScreen(
                     modifier             = Modifier.padding(innerPadding),
                     favorites            = favorites,

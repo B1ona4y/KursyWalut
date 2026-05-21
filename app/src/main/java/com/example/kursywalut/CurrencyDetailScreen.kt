@@ -59,6 +59,7 @@ val currencyNames = mapOf(
 @SuppressLint("DefaultLocale")
 @Composable
 fun CurrencyDetailScreen(
+    modifier: Modifier = Modifier,
     currencyCode: String,
     currentRate: Double,
     growthRate: Double,
@@ -81,15 +82,15 @@ fun CurrencyDetailScreen(
     }
 
     Scaffold(
+        modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text("$currencyCode — ${currencyNames[currencyCode] ?: ""}") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_back),
-                            contentDescription = "Back"
-                        )
+                    if (!isTablet()) { // Only show back button on phones
+                        IconButton(onClick = onBack) {
+                            Icon(painter = painterResource(R.drawable.ic_back), contentDescription = "Back")
+                        }
                     }
                 }
             )
