@@ -35,7 +35,8 @@ fun FavoritesScreen(
     favorites: Set<String> = emptySet(),
     onToggleFavorite: (String) -> Unit = {},
     baseCurrency: String,
-    onBaseCurrencyChange: (String) -> Unit = {}
+    onBaseCurrencyChange: (String) -> Unit = {},
+    decimalPlaces: Int
 ) {
     val client = remember { ExchangeRateClient() }
     var rates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
@@ -91,7 +92,7 @@ fun FavoritesScreen(
                     ) {
                         Column {
                             Text(code, fontWeight = FontWeight.Bold)
-                            Text(String.format("%.4f", rate))
+                            Text(formatRate(rate, decimalPlaces))
                         }
                         IconButton(onClick = { onToggleFavorite(code) }) {
                             Icon(

@@ -1,5 +1,6 @@
 package com.example.kursywalut
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,13 +28,16 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     modifier: Modifier = Modifier,
     baseCurrency: String,
     onBaseCurrencyChange: (String) -> Unit = {},
     refreshInterval: RefreshInterval = RefreshInterval.NEVER,
-    onRefreshIntervalChange: (RefreshInterval) -> Unit = {}
+    onRefreshIntervalChange: (RefreshInterval) -> Unit = {},
+    decimalPlaces: Int = 4,                          // NEW
+    onDecimalPlacesChange: (Int) -> Unit = {}        // NEW
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -78,6 +85,29 @@ fun ProfileScreen(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+        // --- Number precision (decimal places) ---  NEW
+        Text("Number precision (decimal places):", fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            (1..6).forEach { places ->
+                FilterChip(
+                    selected = places == decimalPlaces,
+                    onClick  = { onDecimalPlacesChange(places) },
+                    label    = { Text(places.toString()) }
+                )
+            }
+        }
+        // Live preview, so the effect is visible immediately
+        Text(
+            text = "Przykład: " + formatRate(1.23456789, decimalPlaces) + " $baseCurrency",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
         // --- Save today's rates (appends, does not overwrite) ---
         Button(onClick = {
             scope.launch {
@@ -95,6 +125,14 @@ fun ProfileScreen(
         }
     }
 }
+
+/**
+ * Formats a rate with the given number of decimal places.
+ * Reuse this everywhere a rate is shown instead of hard-coding "%.4f".
+ */
+@SuppressLint("DefaultLocale")
+fun formatRate(value: Double, decimals: Int): String =
+    String.format("%.${decimals}f", value)
 
 /**
  * Appends today's rates as a new line in rates_history.txt.

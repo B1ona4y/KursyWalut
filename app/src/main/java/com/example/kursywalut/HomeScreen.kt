@@ -42,7 +42,8 @@ fun HomeScreen(
     selectedRange: RangeOption = RangeOption.DAY_1,
     onRangeChange: (RangeOption) -> Unit = {},
     onRefresh: () -> Unit,
-    onCurrencyClick: (String) -> Unit = {}
+    onCurrencyClick: (String) -> Unit = {},
+    decimalPlaces: Int = 4
 ) {
     Column(modifier = modifier.fillMaxSize()) {
 
@@ -131,7 +132,7 @@ fun HomeScreen(
                     ) {
                         Text(code, fontWeight = FontWeight.Bold)
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(String.format("%.4f", rates[code] ?: 0.0))
+                            Text(formatRate(rates[code] ?: 0.0, decimalPlaces))
 
                             val growth = growthRates[code]
                             if (growth != null) {

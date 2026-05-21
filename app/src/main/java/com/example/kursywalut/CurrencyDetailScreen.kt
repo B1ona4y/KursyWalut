@@ -33,15 +33,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import java.time.LocalDate
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.time.LocalDate
 import kotlin.math.min
-
 
 val currencyNames = mapOf(
     "USD" to "US Dollar",         "EUR" to "Euro",
@@ -68,7 +67,8 @@ fun CurrencyDetailScreen(
     ratesHistory: Map<String, Map<String, Double>>,
     selectedRange: RangeOption,
     onRangeChange: (RangeOption) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    decimalPlaces: Int = 4
 ) {
     // Build chart series: historical points from file + today's current rate
     val chartData = remember(ratesHistory, currencyCode, selectedRange, currentRate) {
@@ -114,7 +114,7 @@ fun CurrencyDetailScreen(
                     )
                     Spacer(Modifier.size(4.dp))
                     Text(
-                        text = String.format("%.4f %s", currentRate, baseCurrency),
+                        text = "${formatRate(currentRate, decimalPlaces)} $baseCurrency",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -159,6 +159,7 @@ fun CurrencyDetailScreen(
             if (chartData.size >= 2) {
                 RateLineChart(
                     data = chartData,
+                    decimalPlaces = decimalPlaces,
                     modifier = Modifier.fillMaxWidth().height(200.dp)
                 )
             } else {
@@ -185,10 +186,10 @@ fun CurrencyDetailScreen(
     }
 }
 
-@SuppressLint("DefaultLocale")
 @Composable
 fun RateLineChart(
     data: List<Pair<String, Double>>,
+    decimalPlaces: Int = 4,
     modifier: Modifier = Modifier
 ) {
     val lineColor  = MaterialTheme.colorScheme.primary
@@ -209,7 +210,7 @@ fun RateLineChart(
 
         // Резервируем место под подписи осей внутри Canvas
         val yLabelWidth = textMeasurer
-            .measure(String.format("%.4f", maxVal), labelStyle)
+            .measure(formatRate(maxVal, decimalPlaces), labelStyle)
             .size.width.toFloat() + 12f
         val xLabelHeight = 30f
 
@@ -231,7 +232,7 @@ fun RateLineChart(
                 end   = Offset(size.width, y),
                 strokeWidth = 1f
             )
-            val layout = textMeasurer.measure(String.format("%.4f", value), labelStyle)
+            val layout = textMeasurer.measure(formatRate(value, decimalPlaces), labelStyle)
             drawText(
                 textLayoutResult = layout,
                 topLeft = Offset(
@@ -289,7 +290,7 @@ fun RateLineChart(
         // --- Подсветка последнего значения над крайней точкой ---
         val lastIdx = data.size - 1
         val lastLayout = textMeasurer.measure(
-            String.format("%.4f", values[lastIdx]),
+            formatRate(values[lastIdx], decimalPlaces),
             labelStyle.copy(color = lineColor)
         )
         val lx = (xOf(lastIdx) - lastLayout.size.width - 8f).coerceAtLeast(yLabelWidth)
@@ -303,4 +304,3 @@ private fun formatDateLabel(iso: String): String {
     val p = iso.split("-")
     return if (p.size == 3) "${p[2]}.${p[1]}" else iso
 }
-

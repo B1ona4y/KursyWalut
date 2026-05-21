@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -27,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import androidx.core.content.edit
 
 @PreviewScreenSizes
 @Composable
@@ -36,16 +38,27 @@ fun KursyWalutApp() {
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
 
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-    var baseCurrency       by rememberSaveable { mutableStateOf("PLN") }
+    var baseCurrency       by remember { mutableStateOf(prefs.getString("base_currency", "PLN") ?: "PLN") }
     var selectedCurrency   by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRange      by rememberSaveable { mutableStateOf(RangeOption.DAY_1) }
 
     var favorites by remember {
         mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
     }
+
+    var decimalPlaces by remember { mutableIntStateOf(prefs.getInt("decimal_places", 4)) }
+
     fun toggleFavorite(code: String) {
         favorites = if (code in favorites) favorites - code else favorites + code
-        prefs.edit().putStringSet("favorites", favorites).apply()
+        prefs.edit { putStringSet("favorites", favorites) }
+    }
+    fun setBaseCurrency(code: String) {
+        baseCurrency = code
+        prefs.edit { putString("base_currency", code) }
+    }
+    fun setDecimalPlaces(places: Int) {
+        decimalPlaces = places
+        prefs.edit { putInt("decimal_places", places) }
     }
 
     val client = remember { ExchangeRateClient() }
@@ -54,6 +67,8 @@ fun KursyWalutApp() {
     var isLoading     by remember { mutableStateOf(true) }
     var error         by remember { mutableStateOf<String?>(null) }
     var lastUpdate    by remember { mutableStateOf("") }
+
+
 
     val isOnline by remember {
         observeConnectivity(context)
@@ -115,7 +130,8 @@ fun KursyWalutApp() {
             ratesHistory    = ratesHistory,
             selectedRange   = selectedRange,
             onRangeChange   = { selectedRange = it },
-            onBack          = { selectedCurrency = null }
+            onBack          = { selectedCurrency = null },
+            decimalPlaces   = decimalPlaces
         )
         return
     }
@@ -148,24 +164,28 @@ fun KursyWalutApp() {
                     selectedRange   = selectedRange,
                     onRangeChange   = { selectedRange = it },
                     onRefresh       = { scope.launch { loadRates() } },
-                    onCurrencyClick = { selectedCurrency = it }
+                    onCurrencyClick = { selectedCurrency = it },
+                    decimalPlaces = decimalPlaces
                 )
                 AppDestinations.FAVORITES -> FavoritesScreen(
                     modifier             = Modifier.padding(innerPadding),
                     favorites            = favorites,
                     onToggleFavorite     = { toggleFavorite(it) },
                     baseCurrency         = baseCurrency,
-                    onBaseCurrencyChange = { baseCurrency = it }
+                    onBaseCurrencyChange = { setBaseCurrency(it) },
+                    decimalPlaces = decimalPlaces
                 )
                 AppDestinations.PROFILE -> ProfileScreen(
                     modifier                = Modifier.padding(innerPadding),
                     baseCurrency            = baseCurrency,
-                    onBaseCurrencyChange    = { baseCurrency = it },
+                    onBaseCurrencyChange    = { setBaseCurrency(it) },          // ← было { baseCurrency = it }
                     refreshInterval         = refreshInterval,
                     onRefreshIntervalChange = { interval: RefreshInterval ->
                         refreshInterval = interval
-                        prefs.edit().putString("refresh_interval", interval.name).apply()
-                    }
+                        prefs.edit { putString("refresh_interval", interval.name) }
+                    },
+                    decimalPlaces = decimalPlaces,
+                    onDecimalPlacesChange = { setDecimalPlaces(it) }            // ← ЭТОГО НЕ БЫЛО → отсюда баг
                 )
             }
         }
