@@ -42,19 +42,6 @@ import androidx.compose.ui.unit.sp
 import java.time.LocalDate
 import kotlin.math.min
 
-val currencyNames = mapOf(
-    "USD" to "US Dollar",         "EUR" to "Euro",
-    "GBP" to "British Pound",     "JPY" to "Japanese Yen",
-    "CHF" to "Swiss Franc",       "CAD" to "Canadian Dollar",
-    "AUD" to "Australian Dollar", "CNY" to "Chinese Yuan",
-    "NOK" to "Norwegian Krone",   "SEK" to "Swedish Krona",
-    "DKK" to "Danish Krone",      "CZK" to "Czech Koruna",
-    "HUF" to "Hungarian Forint",  "PLN" to "Polish Zloty",
-    "UAH" to "Ukrainian Hryvnia", "RUB" to "Russian Ruble",
-    "TRY" to "Turkish Lira",      "MXN" to "Mexican Peso",
-    "BRL" to "Brazilian Real",    "INR" to "Indian Rupee"
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("DefaultLocale")
 @Composable
@@ -69,9 +56,11 @@ fun CurrencyDetailScreen(
     selectedRange: RangeOption,
     onRangeChange: (RangeOption) -> Unit,
     onBack: () -> Unit,
+    onToggleFavorite: (String) -> Unit = {},
+    isFavorite: Boolean = false,
     decimalPlaces: Int = 4
 ) {
-    // Build chart series: historical points from file + today's current rate
+    // Build chart series: historical points from rebased history + today's current rate
     val chartData = remember(ratesHistory, currencyCode, selectedRange, currentRate) {
         val series = getRateSeries(ratesHistory, currencyCode, selectedRange.days).toMutableList()
         val today  = LocalDate.now().toString()
@@ -85,12 +74,23 @@ fun CurrencyDetailScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("$currencyCode — ${currencyNames[currencyCode] ?: ""}") },
+                title = { Text(currencyCode) },
                 navigationIcon = {
-                    if (!isTablet()) { // Only show back button on phones
+                    if (!isTablet()) {
                         IconButton(onClick = onBack) {
                             Icon(painter = painterResource(R.drawable.ic_back), contentDescription = "Back")
                         }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { onToggleFavorite(currencyCode) }) {
+                        Icon(
+                            painter = painterResource(
+                                if (isFavorite) R.drawable.ic_star else R.drawable.ic_plus
+                            ),
+                            contentDescription = "Toggle favorite",
+                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             )
@@ -109,7 +109,7 @@ fun CurrencyDetailScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "${currencyNames[currencyCode] ?: currencyCode} ($currencyCode)",
+                        text = currencyCode,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -143,7 +143,7 @@ fun CurrencyDetailScreen(
                 }
             }
 
-            // --- Range selector (synced with HomeScreen) ---
+            // --- Range selector ---
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RangeOption.entries.forEach { range ->
                     FilterChip(
@@ -209,7 +209,6 @@ fun RateLineChart(
         val maxVal = values.max()
         val range  = if (maxVal - minVal == 0.0) 1.0 else maxVal - minVal
 
-        // Резервируем место под подписи осей внутри Canvas
         val yLabelWidth = textMeasurer
             .measure(formatRate(maxVal, decimalPlaces), labelStyle)
             .size.width.toFloat() + 12f
@@ -222,7 +221,7 @@ fun RateLineChart(
         fun xOf(i: Int)    = yLabelWidth + i * stepX
         fun yOf(v: Double) = chartHeight * (1f - ((v - minVal) / range).toFloat())
 
-        // --- Ось Y: горизонтальная сетка + подписи цены ---
+        // Grid Y
         val ySteps = 4
         for (s in 0..ySteps) {
             val value = minVal + range * s / ySteps
@@ -243,7 +242,7 @@ fun RateLineChart(
             )
         }
 
-        // --- Заливка под линией (до оси X, не под подписями дат) ---
+        // Area
         drawPath(
             Path().apply {
                 moveTo(xOf(0), yOf(values[0]))
@@ -255,7 +254,7 @@ fun RateLineChart(
             color = fillColor
         )
 
-        // --- Линия ---
+        // Line
         drawPath(
             Path().apply {
                 moveTo(xOf(0), yOf(values[0]))
@@ -265,7 +264,7 @@ fun RateLineChart(
             style = Stroke(width = 3f, cap = StrokeCap.Round)
         )
 
-        // --- Точки: первая, последняя, каждая 5-я ---
+        // Points
         data.forEachIndexed { i, (_, v) ->
             if (i == 0 || i == data.size - 1 || i % 5 == 0) {
                 drawCircle(lineColor, 6f, Offset(xOf(i), yOf(v)))
@@ -273,7 +272,7 @@ fun RateLineChart(
             }
         }
 
-        // --- Ось X: ~5 равномерно распределённых дат ---
+        // Labels X
         val labelCount = min(5, data.size)
         val indices = (0 until labelCount)
             .map { it * (data.size - 1) / (labelCount - 1) }
@@ -288,7 +287,7 @@ fun RateLineChart(
             )
         }
 
-        // --- Подсветка последнего значения над крайней точкой ---
+        // Value tooltip
         val lastIdx = data.size - 1
         val lastLayout = textMeasurer.measure(
             formatRate(values[lastIdx], decimalPlaces),
@@ -300,7 +299,6 @@ fun RateLineChart(
     }
 }
 
-// Преобразует "yyyy-MM-dd" -> "dd.MM" для компактных подписей по оси X
 private fun formatDateLabel(iso: String): String {
     val p = iso.split("-")
     return if (p.size == 3) "${p[2]}.${p[1]}" else iso

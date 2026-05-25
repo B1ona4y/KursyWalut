@@ -70,8 +70,6 @@ fun KursyWalutApp() {
     var error         by remember { mutableStateOf<String?>(null) }
     var lastUpdate    by remember { mutableStateOf("") }
 
-
-
     val isOnline by remember {
         observeConnectivity(context)
             .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
@@ -85,10 +83,15 @@ fun KursyWalutApp() {
         )
     }
 
-    // ── derived: growth depends on rates, history and selectedRange ──────────
-    val growthRates = remember(rates, ratesHistory, selectedRange) {
+    // ── derived: history rebased to current base currency ──────────
+    val rebasedHistory = remember(ratesHistory, baseCurrency) {
+        rebaseHistory(ratesHistory, baseCurrency)
+    }
+
+    // ── derived: growth depends on rates, rebased history and selectedRange ──
+    val growthRates = remember(rates, rebasedHistory, selectedRange) {
         rates.mapNotNull { (code, todayRate) ->
-            val oldRate = getRateNDaysAgo(ratesHistory, code, selectedRange.days)
+            val oldRate = getRateNDaysAgo(rebasedHistory, code, selectedRange.days)
             if (oldRate != null && oldRate != 0.0) {
                 code to (todayRate - oldRate) / oldRate * 100
             } else null
@@ -106,7 +109,7 @@ fun KursyWalutApp() {
         if (result != null) {
             rates = result.conversionRates
             lastUpdate = LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))   // ← вместо result.lastUpdate
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         } else {
             error = "Failed to load rates"
         }
@@ -122,8 +125,6 @@ fun KursyWalutApp() {
             loadRates()
         }
     }
-
-
 
     NavigationSuiteScaffold(
         navigationSuiteItems = {
@@ -142,7 +143,6 @@ fun KursyWalutApp() {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             when (currentDestination) {
                 AppDestinations.HOME -> {
-                    //  Use MainAppContent here to manage the adaptive split-screen layout
                     MainAppContent(
                         rates = rates,
                         growthRates = growthRates,
@@ -150,31 +150,35 @@ fun KursyWalutApp() {
                         lastUpdate = lastUpdate,
                         isOnline = isOnline,
                         selectedRange = selectedRange,
-                        ratesHistory = ratesHistory,
+                        ratesHistory = rebasedHistory,
                         baseCurrency = baseCurrency,
                         onRangeChange = { selectedRange = it },
-                        onRefresh = { scope.launch { loadRates() } }
+                        onRefresh = { scope.launch { loadRates() } },
+                        onToggleFavorite = { toggleFavorite(it) },   // ← add this (fixes error 2)
+                        // ← optional, see note below
+                        decimalPlaces = decimalPlaces
                     )
                 }
                 AppDestinations.FAVORITES -> FavoritesScreen(
-                    modifier             = Modifier.padding(innerPadding),
-                    favorites            = favorites,
-                    onToggleFavorite     = { toggleFavorite(it) },
-                    baseCurrency         = baseCurrency,
-                    onBaseCurrencyChange = { setBaseCurrency(it) },
-                    decimalPlaces = decimalPlaces
+                    modifier         = Modifier.padding(innerPadding),
+                    rates            = rates,
+                    isLoading        = isLoading,
+                    error            = error,
+                    favorites        = favorites,
+                    onToggleFavorite = { toggleFavorite(it) },
+                    decimalPlaces    = decimalPlaces
                 )
                 AppDestinations.PROFILE -> ProfileScreen(
                     modifier                = Modifier.padding(innerPadding),
                     baseCurrency            = baseCurrency,
-                    onBaseCurrencyChange    = { setBaseCurrency(it) },          // ← было { baseCurrency = it }
+                    onBaseCurrencyChange    = { setBaseCurrency(it) },
                     refreshInterval         = refreshInterval,
                     onRefreshIntervalChange = { interval: RefreshInterval ->
                         refreshInterval = interval
                         prefs.edit { putString("refresh_interval", interval.name) }
                     },
                     decimalPlaces = decimalPlaces,
-                    onDecimalPlacesChange = { setDecimalPlaces(it) }            // ← ЭТОГО НЕ БЫЛО → отсюда баг
+                    onDecimalPlacesChange = { setDecimalPlaces(it) }
                 )
             }
         }
