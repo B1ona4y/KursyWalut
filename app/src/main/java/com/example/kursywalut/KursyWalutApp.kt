@@ -24,10 +24,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import com.example.kursywalut.api.ExchangeRateClient
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.core.content.edit
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -102,17 +104,20 @@ fun KursyWalutApp() {
         isLoading = true
         error = null
 
-        // Always refresh history from disk (file may have been appended to)
-        ratesHistory = readRatesHistory(context.filesDir)
-
         val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
         if (result != null) {
             rates = result.conversionRates
             lastUpdate = LocalDateTime.now()
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+            // Persist today's snapshot on every refresh (manual + auto) on the IO dispatcher.
+            withContext(Dispatchers.IO) { saveRatesForToday(context.filesDir, rates) }
         } else {
             error = "Failed to load rates"
         }
+
+        // Always refresh history from disk (now includes today's snapshot if it was saved).
+        ratesHistory = withContext(Dispatchers.IO) { readRatesHistory(context.filesDir) }
         isLoading = false
     }
 
@@ -154,8 +159,7 @@ fun KursyWalutApp() {
                         baseCurrency = baseCurrency,
                         onRangeChange = { selectedRange = it },
                         onRefresh = { scope.launch { loadRates() } },
-                        onToggleFavorite = { toggleFavorite(it) },   // ← add this (fixes error 2)
-                        // ← optional, see note below
+                        onToggleFavorite = { toggleFavorite(it) },
                         decimalPlaces = decimalPlaces
                     )
                 }

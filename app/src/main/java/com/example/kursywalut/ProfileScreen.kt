@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -23,10 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.kursywalut.api.ExchangeRateClient
-import kotlinx.coroutines.launch
-import java.io.File
-import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,8 +31,8 @@ fun ProfileScreen(
     onBaseCurrencyChange: (String) -> Unit = {},
     refreshInterval: RefreshInterval = RefreshInterval.NEVER,
     onRefreshIntervalChange: (RefreshInterval) -> Unit = {},
-    decimalPlaces: Int = 4,                          // NEW
-    onDecimalPlacesChange: (Int) -> Unit = {}        // NEW
+    decimalPlaces: Int = 4,
+    onDecimalPlacesChange: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -99,7 +94,6 @@ fun ProfileScreen(
                 )
             }
         }
-        // Live preview, so the effect is visible immediately
         Text(
             text = "Przykład: " + formatRate(1.23456789, decimalPlaces) + " $baseCurrency",
             style = MaterialTheme.typography.bodySmall,
@@ -107,49 +101,9 @@ fun ProfileScreen(
         )
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-        // --- Save today's rates (appends, does not overwrite) ---
-        Button(onClick = {
-            scope.launch {
-                val client = ExchangeRateClient()
-                val result = client.fetchRates(BuildConfig.API_KEY, baseCurrency)
-                if (result != null) {
-                    appendRatesToHistory(
-                        filesDir = context.filesDir,
-                        rates    = result.conversionRates
-                    )
-                }
-            }
-        }) {
-            Text("Save today's rates to history")
-        }
     }
 }
 
-/**
- * Formats a rate with the given number of decimal places.
- * Reuse this everywhere a rate is shown instead of hard-coding "%.4f".
- */
 @SuppressLint("DefaultLocale")
 fun formatRate(value: Double, decimals: Int): String =
     String.format("%.${decimals}f", value)
-
-/**
- * Appends today's rates as a new line in rates_history.txt.
- * Format per line: "YYYY-MM-DD|CODE1=VAL1;CODE2=VAL2;..."
- * If a line for today already exists it is replaced, not duplicated.
- */
-fun appendRatesToHistory(filesDir: File, rates: Map<String, Double>) {
-    val today   = LocalDate.now().toString()   // e.g. "2025-05-18"
-    val newLine = "$today|" + rates.entries.joinToString(";") { "${it.key}=${it.value}" }
-
-    val file = File(filesDir, "rates_history.txt")
-
-    val existingLines = if (file.exists()) {
-        file.readLines().filter { !it.startsWith("$today|") }  // drop today's old entry if any
-    } else {
-        emptyList()
-    }
-
-    file.writeText((existingLines + newLine).joinToString("\n"))
-}

@@ -32,6 +32,46 @@ fun readRatesHistory(filesDir: File): Map<String, Map<String, Double>> {
         .toMap()
 }
 
+fun saveRatesForToday(filesDir: File, rates: Map<String, Double>) {
+    if (rates.isEmpty()) return
+
+    val file = File(filesDir, "rates_history.txt")
+    val today = LocalDate.now().toString() // yyyy-MM-dd
+
+    // Формируем новую строку
+    val body = rates.entries.joinToString(";") { (code, value) -> "$code=$value" }
+    val newLine = "$today|$body"
+
+    try {
+        if (file.exists()) {
+            val lines = file.readLines().toMutableList()
+
+            if (lines.isNotEmpty()) {
+                val lastLine = lines.last()
+                val lastDate = lastLine.substringBefore("|")
+
+                if (lastDate == today) {
+                    if (lastLine == newLine) {
+                        return
+                    } else {
+                        lines[lines.size - 1] = newLine
+                    }
+                } else {
+                    lines.add(newLine)
+                }
+            } else {
+                lines.add(newLine)
+            }
+            file.writeText(lines.joinToString("\n") + "\n")
+
+        } else {
+            file.writeText(newLine + "\n")
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
 fun rebaseHistory(
     history: Map<String, Map<String, Double>>,
     targetBase: String
