@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.callbackFlow
 fun observeConnectivity(context: Context): Flow<Boolean> = callbackFlow {
     val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    // emit current state immediately on start
     val current = manager.getNetworkCapabilities(manager.activeNetwork)
     trySend(current?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true)
 

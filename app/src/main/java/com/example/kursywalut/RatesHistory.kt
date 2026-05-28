@@ -36,9 +36,8 @@ fun saveRatesForToday(filesDir: File, rates: Map<String, Double>) {
     if (rates.isEmpty()) return
 
     val file = File(filesDir, "rates_history.txt")
-    val today = LocalDate.now().toString() // yyyy-MM-dd
+    val today = LocalDate.now().toString()
 
-    // Формируем новую строку
     val body = rates.entries.joinToString(";") { (code, value) -> "$code=$value" }
     val newLine = "$today|$body"
 
@@ -97,7 +96,6 @@ fun getRateNDaysAgo(
     }
     if (datedRates.isEmpty()) return null
 
-    // Prefer dates ≤ target (closest to target). Fallback: oldest available.
     return datedRates
         .filter { it.first <= target }
         .maxByOrNull { it.first }

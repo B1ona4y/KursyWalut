@@ -60,7 +60,6 @@ fun CurrencyDetailScreen(
     isFavorite: Boolean = false,
     decimalPlaces: Int = 4
 ) {
-    // Build chart series: historical points from rebased history + today's current rate
     val chartData = remember(ratesHistory, currencyCode, selectedRange, currentRate) {
         val series = getRateSeries(ratesHistory, currencyCode, selectedRange.days).toMutableList()
         val today  = LocalDate.now().toString()

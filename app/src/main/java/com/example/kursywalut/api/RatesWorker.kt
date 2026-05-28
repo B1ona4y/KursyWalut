@@ -1,10 +1,10 @@
 package com.example.kursywalut.api
+
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.kursywalut.BuildConfig
-import com.example.kursywalut.api.ExchangeRateClient
-import java.io.File
+import com.example.kursywalut.saveRatesForToday
 
 class RatesWorker(
     context: Context,
@@ -17,11 +17,7 @@ class RatesWorker(
             val result = client.fetchRates(BuildConfig.API_KEY, "PLN")
                 ?: return Result.retry()
 
-            val data = result.conversionRates.entries
-                .joinToString(";") { "${it.key}=${it.value}" }
-
-            val file = File(applicationContext.filesDir, "yesterday_rates.txt")
-            file.writeText(data)
+            saveRatesForToday(applicationContext.filesDir, result.conversionRates)
 
             Result.success()
         } catch (e: Exception) {

@@ -48,7 +48,6 @@ fun FavoritesScreen(
         .sortedByDescending { (code, _) -> code in favorites }
 
     when {
-        // pokaż spinner tylko dopóki nie ma żadnych danych
         isLoading && rates.isEmpty() -> {
             Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
